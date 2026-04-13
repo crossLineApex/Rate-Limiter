@@ -1,0 +1,30 @@
+{
+  "name": "rate-limiter",
+  "version": "1.0.0",
+  "description": "working on rate-limiter with express app",
+  "keywords": [
+    "Express"
+  ],
+  "homepage": "https://github.com/crossLineApex/Rate-Limiter#readme",
+  "bugs": {
+    "url": "https://github.com/crossLineApex/Rate-Limiter/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/crossLineApex/Rate-Limiter.git"
+  },
+  "license": "ISC",
+  "author": "aaryal",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
