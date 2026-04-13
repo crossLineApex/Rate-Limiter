@@ -1,6 +1,6 @@
 # Rate-Limiter
 
-A **fixed window rate-limiting middleware** for Express.js that protects API endpoints from excessive requests using an in-memory store. This implementation tracks requests per IP address and path, resetting the counter at fixed time intervals.
+A **sliding window rate-limiting middleware** for Express.js that protects API endpoints from excessive requests using an in-memory store. This implementation tracks request timestamps per IP address and path, dynamically adjusting limits based on a rolling time window.
 
 ## Table of Contents
 
@@ -16,7 +16,8 @@ A **fixed window rate-limiting middleware** for Express.js that protects API end
 
 ## Features
 
-- ✅ **Fixed Window Rate Limiting** — Resets request counts at fixed time intervals
+- ✅ **Sliding Window Rate Limiting** — Tracks requests within a rolling time window for precise rate limiting
+- ✅ **Burst Protection** — Prevents simultaneous request bursts across window boundaries
 - ✅ **IP-based Tracking** — Identifies clients using their IP address
 - ✅ **Path-aware Limiting** — Different limits can be applied per endpoint
 - ✅ **In-memory Storage** — Fast, lightweight request tracking without external dependencies
@@ -120,29 +121,38 @@ curl http://localhost:4040/api/data
 
 ## How It Works
 
-The rate limiter uses a **fixed window algorithm** with the following logic:
+The rate limiter uses a **sliding window algorithm** that maintains a history of request timestamps. Here's the process:
 
 1. **Client Identification** — Extracts the client's IP address from `req.ip`
 2. **Unique Key Generation** — Creates a unique key combining IP and path: `${ip}:${path}`
-3. **Window Calculation** — Determines the current time window:
+3. **Timestamp Filtering** — Removes timestamps older than the window from the request history:
+   ```javascript
+   store[key].timestamp = store[key].timestamp.filter(t => currentTime - t < WINDOW_SIZE_IN_SECONDS)
    ```
-   WINDOW = floor(currentTime / WINDOW_SIZE_IN_SECONDS)
-   ```
-4. **Request Tracking** — Stores request count and window in the in-memory `store` object
-5. **Window Reset** — When the window changes, resets the counter to 1
-6. **Verification** — If requests exceed `MAX_REQUEST`, returns `429` status; otherwise, allows request
+4. **Capacity Check** — Evaluates if the current request count within the window has reached `MAX_REQUEST`
+5. **Request Decision** — If within limit, adds current timestamp and allows the request; otherwise, rejects with `429`
 
 ### Example Timeline
 
 With `WINDOW_SIZE_IN_SECONDS: 10` and `MAX_REQUEST: 5`:
 
 ```
-Time (seconds) | Window | IP 127.0.0.1:/ Count | Action
-0-2            | 0      | 1, 2, 3             | ✅ Allowed
-3-5            | 0      | 4, 5                | ✅ Allowed
-6              | 0      | 6                   | ❌ Rejected (too many)
-10             | 1      | 1                   | ✅ Allowed (window reset)
+Time (s) | Client IP  | Action                          | Timestamps in Window (10s)
+0        | 127.0.0.1  | Request 1 allowed              | [0]
+2        | 127.0.0.1  | Request 2 allowed              | [0, 2]
+4        | 127.0.0.1  | Request 3 allowed              | [0, 2, 4]
+6        | 127.0.0.1  | Request 4 allowed              | [0, 2, 4, 6]
+8        | 127.0.0.1  | Request 5 allowed              | [0, 2, 4, 6, 8]
+9        | 127.0.0.1  | Request 6 REJECTED (at limit)  | [0, 2, 4, 6, 8]
+11       | 127.0.0.1  | Request 7 allowed (0 older)    | [2, 4, 6, 8, 11]
+12       | 127.0.0.1  | Request 8 allowed (2 older)    | [4, 6, 8, 11, 12]
 ```
+
+### Key Advantages Over Fixed Window
+
+- **No Burst at Boundaries** — Prevents 2× request spikes at window edges (e.g., requests at 9:59.9s and 10:00.1s)
+- **Precise Limiting** — Enforces limits based on actual rolling time, not artificial boundaries
+- **Fair Resource Distribution** — Distributes requests evenly across the time window
 
 ## Project Structure
 
@@ -211,23 +221,23 @@ You should see responses allowed up to `MAX_REQUEST`, then `429` responses until
 
 ## Limitations & Considerations
 
-⚠️ **Boundary Burst Problem** — User can do 100 requests at 12:00:59
-+ 100 requests at 12:01:00, 200 requests in ~1 second
-
 ⚠️ **In-Memory Storage** — Request data is stored in memory and will be lost on server restart. Not suitable for distributed systems.
 
 ⚠️ **Single Server Only** — Designed for single-instance deployments. For distributed systems, consider using external stores (Redis).
+
+⚠️ **Memory Growth** — Timestamp arrays grow proportionally with request volume. High-traffic endpoints may accumulate memory over time.
 
 ⚠️ **Same IP Tracking** — Behind proxies/load balancers, use `req.headers['x-forwarded-for']` instead of `req.ip` for accurate client tracking.
 
 ## Future Enhancements
 
 - [ ] Redis integration for distributed rate limiting
-- [ ] Sliding window algorithm option
 - [ ] Per-user limits in addition to IP-based
 - [ ] Customizable rate limit headers in responses
 - [ ] Whitelist/blacklist functionality
 - [ ] Rate limit analytics and monitoring
+- [ ] Memory optimization for high-traffic scenarios
+- [ ] Leaky bucket algorithm option
 
 ## License
 

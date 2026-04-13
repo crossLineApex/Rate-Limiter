@@ -10,33 +10,26 @@ function rateLimiter(req, res, next) {
         const key = `${userId}:${path}`;
 
         const currentTime = currentTimeInSeconds();
-        const WINDOW = Math.floor(currentTime / WINDOW_SIZE_IN_SECONDS);
 
         if(!store[key]){
             store[key] = {
-                count: 1,
-                window: WINDOW
+                timestamp: [currentTime]
             }
             next();
         }
 
-        if(store[key].window === WINDOW){
-            store[key].count++;
+        store[key].timestamp = store[key].timestamp.filter(t => currentTime - t < WINDOW_SIZE_IN_SECONDS);
 
-            if(store[key].count > MAX_REQUEST){
-                return res.status(429).json({
+        if(store[key].timestamp.length >=MAX_REQUEST){
+            return res.status(429).json({
                 success: false,
                 message: 'Too many requests. Please try again later.',
-                });
-            } else {
-                return next();
-            }
+            });
+        }else{
+            store[key].timestamp.push(currentTime);
+            next();
         }
-        store[key] = {
-            count: 1,
-            window: WINDOW
-        }
-        next();
+
     }catch(error){
         console.error("Error in rate limiter middleware:", error);
         return res.status(500).json({
